@@ -1,25 +1,29 @@
-import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import type { Metadata, Viewport } from "next"
+import { Inter } from "next/font/google"
+import "./globals.css"
 
-import './globals.css'
-
-const _geist = Geist({ subsets: ['latin'] })
-const _geistMono = Geist_Mono({ subsets: ['latin'] })
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: "Chat Pionieri - Pi Network",
+  description: "Chat esclusiva per Pionieri verificati Pi Network",
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="font-sans antialiased">{children}</body>
+    <html lang="it" className="bg-background">
+      <head>
+        <script src="https://sdk.minepi.com/pi-sdk.js" defer />
+      </head>
+      <body className={`${inter.variable} font-sans antialiased`}>
+        {children}
+      </body>
     </html>
   )
 }
