@@ -1,0 +1,221 @@
+"use client"
+
+import { useEffect, useRef, useState } from "react"
+import { createClient } from "@supabase/supabase-js"
+import { ChatMessage } from "./chat-message"
+
+interface Message {
+  id: string
+  content: string
+  created_at: string
+  user_id: string
+  display_name: string
+  reply_to?: string | null
+  reply_message?: { content: string; display_name: string } | null
+}
+
+interface ChatRoomProps {
+  currentUserId: string
+  currentUsername: string
+  isAdmin: boolean
+}
+
+export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomProps) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [banModal, setBanModal] = useState<{ userId: string; username: string } | null>(null)
+  const [banReason, setBanReason] = useState("")
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Load messages
+  useEffect(() => {
+    async function load() {
+      const res = await fetch("/api/messages")
+      if (res.ok) {
+        const data = await res.json()
+        setMessages(data)
+      }
+    }
+    load()
+  }, [])
+
+  // Realtime subscription
+  useEffect(() => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
+    const channel = supabase
+      .channel("messages-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, async () => {
+        const res = await fetch("/api/messages")
+        if (res.ok) setMessages(await res.json())
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, async () => {
+        const res = await fetch("/api/messages")
+        if (res.ok) setMessages(await res.json())
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  // Auto-scroll
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
+
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!input.trim()) return
+
+    const content = input.trim()
+    setInput("")
+    const replyRef = replyTo
+    setReplyTo(null)
+
+    // Optimistic add
+    const optimistic: Message = {
+      id: "temp-" + Date.now(),
+      content,
+      created_at: new Date().toISOString(),
+      user_id: currentUserId,
+      display_name: currentUsername,
+      reply_to: replyRef?.id || null,
+      reply_message: replyRef ? { content: replyRef.content, display_name: replyRef.display_name } : null,
+    }
+    setMessages((prev) => [...prev, optimistic])
+
+    await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, userId: currentUserId, replyTo: replyRef?.id || null }),
+    })
+  }
+
+  async function handleDelete(messageId: string) {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId))
+    await fetch("/api/messages", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId, adminUsername: currentUsername }),
+    })
+  }
+
+  async function handleBan() {
+    if (!banModal) return
+    await fetch("/api/admin/ban", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: banModal.userId,
+        adminUsername: currentUsername,
+        reason: banReason || "Violazione regole",
+      }),
+    })
+    setMessages((prev) => prev.filter((m) => m.user_id !== banModal.userId))
+    setBanModal(null)
+    setBanReason("")
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("pi_session")
+    window.location.href = "/auth/login"
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
+        <div>
+          <h1 className="text-lg font-bold text-foreground">Chat Pionieri</h1>
+          <p className="text-xs text-muted-foreground">{currentUsername}{isAdmin ? " (Admin)" : ""}</p>
+        </div>
+        <div className="flex gap-2">
+          <a href="/chat/payment" className="rounded-lg bg-[#F7A800] px-3 py-2 text-xs font-bold text-foreground">
+            Pi Pay
+          </a>
+          <button onClick={handleLogout} className="rounded-lg border border-border px-3 py-2 text-xs text-foreground">
+            Esci
+          </button>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 && (
+          <p className="text-center text-muted-foreground py-10">Nessun messaggio. Inizia la conversazione!</p>
+        )}
+        {messages.map((msg) => (
+          <ChatMessage
+            key={msg.id}
+            message={msg}
+            isOwn={msg.user_id === currentUserId}
+            isAdmin={isAdmin}
+            onReply={setReplyTo}
+            onDelete={handleDelete}
+            onBan={(userId, username) => setBanModal({ userId, username })}
+          />
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Reply preview */}
+      {replyTo && (
+        <div className="flex items-center gap-2 border-t border-border bg-card px-4 py-2">
+          <div className="flex-1 truncate text-sm text-muted-foreground">
+            <span className="font-bold text-[#F7A800]">{replyTo.display_name}:</span> {replyTo.content}
+          </div>
+          <button onClick={() => setReplyTo(null)} className="text-lg text-muted-foreground">X</button>
+        </div>
+      )}
+
+      {/* Input */}
+      <form onSubmit={sendMessage} className="sticky bottom-0 flex gap-2 border-t border-border bg-card p-3">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Scrivi un messaggio..."
+          className="flex-1 rounded-full border border-border bg-background px-4 py-3 text-base text-foreground placeholder:text-muted-foreground outline-none focus:border-[#F7A800]"
+        />
+        <button
+          type="submit"
+          disabled={!input.trim()}
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F7A800] text-foreground disabled:opacity-50"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+          </svg>
+        </button>
+      </form>
+
+      {/* Ban modal */}
+      {banModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-card p-6">
+            <h3 className="text-lg font-bold text-foreground">Banna {banModal.username}</h3>
+            <p className="mt-2 text-sm text-muted-foreground">Inserisci un motivo per il ban:</p>
+            <input
+              type="text"
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+              placeholder="Motivo del ban..."
+              className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setBanModal(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-foreground">
+                Annulla
+              </button>
+              <button onClick={handleBan} className="flex-1 rounded-lg bg-destructive px-4 py-2 text-sm text-destructive-foreground">
+                Banna
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
