@@ -35,15 +35,17 @@ CREATE TABLE IF NOT EXISTS public.pi_payments (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Disable RLS for public access (Pi auth handles authentication externally)
+-- Enable RLS
 ALTER TABLE public.pi_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pi_payments ENABLE ROW LEVEL SECURITY;
 
--- Allow all operations via service role (API routes use service role key)
-CREATE POLICY "Allow all for service role" ON public.pi_users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for service role" ON public.messages FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for service role" ON public.pi_payments FOR ALL USING (true) WITH CHECK (true);
+-- Allow all operations (Pi SDK handles auth externally, API routes use service role key)
+DROP POLICY IF EXISTS "pi_users_all" ON public.pi_users;
+CREATE POLICY "pi_users_all" ON public.pi_users FOR ALL USING (true) WITH CHECK (true);
 
--- Set admin for cipollas
--- This will be done via API after first login
+DROP POLICY IF EXISTS "messages_all" ON public.messages;
+CREATE POLICY "messages_all" ON public.messages FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "pi_payments_all" ON public.pi_payments;
+CREATE POLICY "pi_payments_all" ON public.pi_payments FOR ALL USING (true) WITH CHECK (true);
