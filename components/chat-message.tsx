@@ -40,7 +40,7 @@ export function ChatMessage({ message, isOwn, isAdmin, onReply, onDelete, onBan 
         onClick={() => { if (!isOwn) setShowMenu(!showMenu) }}
       >
         {!isOwn && (
-          <p className="text-xs font-bold text-[#F7A800]">{message.display_name}</p>
+          <p className="text-xs font-bold text-red-600">{message.display_name}</p>
         )}
 
         {message.reply_message && (
