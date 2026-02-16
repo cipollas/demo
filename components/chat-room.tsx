@@ -26,7 +26,8 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [banModal, setBanModal] = useState<{ userId: string; username: string } | null>(null)
   const [banReason, setBanReason] = useState("")
-  const [onlineCount, setOnlineCount] = useState(1)
+  const [onlineUsers, setOnlineUsers] = useState<{ user_id: string; username: string }[]>([])
+  const [showOnlineList, setShowOnlineList] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Load messages
@@ -60,7 +61,15 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
       })
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState()
-        setOnlineCount(Object.keys(state).length)
+        const users: { user_id: string; username: string }[] = []
+        Object.values(state).forEach((presences: any) => {
+          presences.forEach((p: any) => {
+            if (p.username && !users.find(u => u.user_id === p.user_id)) {
+              users.push({ user_id: p.user_id, username: p.username })
+            }
+          })
+        })
+        setOnlineUsers(users)
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
@@ -142,10 +151,13 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
           <h1 className="text-lg font-bold text-foreground">Chat Pionieri</h1>
           <div className="flex items-center gap-2">
             <p className="text-xs text-muted-foreground">{currentUsername}{isAdmin ? " (Admin)" : ""}</p>
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <button
+              onClick={() => setShowOnlineList(!showOnlineList)}
+              className="flex items-center gap-1 text-xs text-muted-foreground"
+            >
               <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-              {onlineCount} online
-            </span>
+              {onlineUsers.length || 1} online
+            </button>
           </div>
         </div>
         <div className="flex gap-2">
@@ -157,6 +169,27 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
           </button>
         </div>
       </header>
+
+      {/* Online users panel */}
+      {showOnlineList && (
+        <div className="border-b border-border bg-card px-4 py-3">
+          <p className="mb-2 text-xs font-bold text-foreground">Utenti online:</p>
+          <div className="flex flex-wrap gap-2">
+            {onlineUsers.map((u) => (
+              <span
+                key={u.user_id}
+                className="flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs text-foreground"
+              >
+                <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+                {u.username}
+              </span>
+            ))}
+            {onlineUsers.length === 0 && (
+              <span className="text-xs text-muted-foreground">Nessun utente online</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -181,7 +214,7 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
       {replyTo && (
         <div className="flex items-center gap-2 border-t border-border bg-card px-4 py-2">
           <div className="flex-1 truncate text-sm text-muted-foreground">
-            <span className="font-bold text-[#F7A800]">{replyTo.display_name}:</span> {replyTo.content}
+            <span className="font-bold text-red-600">{replyTo.display_name}:</span> {replyTo.content}
           </div>
           <button onClick={() => setReplyTo(null)} className="text-lg text-muted-foreground">X</button>
         </div>
