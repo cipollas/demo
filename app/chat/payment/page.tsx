@@ -82,9 +82,9 @@ export default function PaymentPage() {
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#F7A800]">
           <span className="text-3xl font-bold text-card">Pi</span>
         </div>
-        <h2 className="mt-4 text-xl font-bold text-foreground">Supporta la Community</h2>
+        <h2 className="mt-4 text-xl font-bold text-foreground">Aiuta o supporta l'app con una donazione</h2>
         <p className="mt-2 text-center text-sm text-muted-foreground">
-          Scegli quanto vuoi donare. Ogni contributo aiuta la community dei Pionieri.
+          Scegli un contributo per il supporto e aggiornamento dell'app, non è obbligatorio il supporto o aiuto.
         </p>
 
         {/* Quick amount buttons */}
