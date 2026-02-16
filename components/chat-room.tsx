@@ -26,6 +26,7 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [banModal, setBanModal] = useState<{ userId: string; username: string } | null>(null)
   const [banReason, setBanReason] = useState("")
+  const [onlineCount, setOnlineCount] = useState(1)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Load messages
@@ -40,7 +41,7 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
     load()
   }, [])
 
-  // Realtime subscription
+  // Realtime subscription + Presence (online users)
   useEffect(() => {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -48,7 +49,7 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
     )
 
     const channel = supabase
-      .channel("messages-realtime")
+      .channel("messages-realtime", { config: { presence: { key: currentUserId } } })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, async () => {
         const res = await fetch("/api/messages")
         if (res.ok) setMessages(await res.json())
@@ -57,10 +58,18 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
         const res = await fetch("/api/messages")
         if (res.ok) setMessages(await res.json())
       })
-      .subscribe()
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState()
+        setOnlineCount(Object.keys(state).length)
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ user_id: currentUserId, username: currentUsername })
+        }
+      })
 
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [currentUserId, currentUsername])
 
   // Auto-scroll
   useEffect(() => {
@@ -131,7 +140,13 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3">
         <div>
           <h1 className="text-lg font-bold text-foreground">Chat Pionieri</h1>
-          <p className="text-xs text-muted-foreground">{currentUsername}{isAdmin ? " (Admin)" : ""}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground">{currentUsername}{isAdmin ? " (Admin)" : ""}</p>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+              {onlineCount} online
+            </span>
+          </div>
         </div>
         <div className="flex gap-2">
           <a href="/chat/payment" className="rounded-lg bg-[#F7A800] px-3 py-2 text-xs font-bold text-foreground">
