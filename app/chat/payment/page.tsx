@@ -2,11 +2,25 @@
 
 import { useState } from "react"
 
+const QUICK_AMOUNTS = [0.1, 0.5, 1, 5, 10]
+
 export default function PaymentPage() {
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle")
   const [errorMsg, setErrorMsg] = useState("")
+  const [amount, setAmount] = useState("")
+
+  function selectQuickAmount(value: number) {
+    setAmount(value.toString())
+  }
 
   async function handlePayment() {
+    const parsedAmount = parseFloat(amount)
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      setErrorMsg("Inserisci un importo valido maggiore di 0")
+      setStatus("error")
+      return
+    }
+
     const Pi = (window as unknown as Record<string, unknown>).Pi as {
       init: (config: { version: string; sandbox: boolean }) => void
       authenticate: (scopes: string[], onIncomplete: () => void) => Promise<unknown>
@@ -27,7 +41,7 @@ export default function PaymentPage() {
       await Pi.authenticate(["payments", "username"], () => {})
 
       Pi.createPayment(
-        { amount: 0.01, memo: "Supporto Chat Pionieri", metadata: { purpose: "user-to-app" } },
+        { amount: parsedAmount, memo: `Donazione ${parsedAmount} Pi - Chat Pionieri`, metadata: { purpose: "donation" } },
         {
           onReadyForServerApproval: async (paymentId: string) => {
             await fetch("/api/pi/approve", {
@@ -61,7 +75,7 @@ export default function PaymentPage() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
         <a href="/chat" className="rounded-lg border border-border px-3 py-1 text-sm text-foreground">Indietro</a>
-        <h1 className="text-lg font-bold text-foreground">Pagamento Pi</h1>
+        <h1 className="text-lg font-bold text-foreground">Donazione Pi</h1>
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center p-6">
@@ -70,19 +84,70 @@ export default function PaymentPage() {
         </div>
         <h2 className="mt-4 text-xl font-bold text-foreground">Supporta la Community</h2>
         <p className="mt-2 text-center text-sm text-muted-foreground">
-          Effettua un pagamento User-to-App per confermare la configurazione della tua app Pi Network.
+          Scegli quanto vuoi donare. Ogni contributo aiuta la community dei Pionieri.
         </p>
+
+        {/* Quick amount buttons */}
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          {QUICK_AMOUNTS.map((val) => (
+            <button
+              key={val}
+              onClick={() => selectQuickAmount(val)}
+              className={`rounded-full border-2 px-4 py-2 text-sm font-bold transition-colors ${
+                amount === val.toString()
+                  ? "border-[#F7A800] bg-[#F7A800] text-white"
+                  : "border-border bg-card text-foreground"
+              }`}
+            >
+              {val} Pi
+            </button>
+          ))}
+        </div>
+
+        {/* Custom amount input */}
+        <div className="mt-4 w-full max-w-xs">
+          <label className="mb-1 block text-xs font-bold text-muted-foreground">Oppure inserisci un importo personalizzato:</label>
+          <div className="flex items-center gap-2 rounded-xl border-2 border-border bg-card px-4 py-3">
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full bg-transparent text-lg font-bold text-foreground outline-none"
+              style={{ fontSize: "18px" }}
+            />
+            <span className="text-lg font-bold text-[#F7A800]">Pi</span>
+          </div>
+        </div>
 
         <button
           onClick={handlePayment}
-          disabled={status === "processing" || status === "success"}
-          className="mt-6 w-full max-w-xs rounded-xl bg-[#F7A800] px-6 py-4 text-lg font-bold text-foreground disabled:opacity-50"
+          disabled={status === "processing" || status === "success" || !amount}
+          className="mt-6 w-full max-w-xs rounded-xl bg-[#F7A800] px-6 py-4 text-lg font-bold text-white disabled:opacity-50"
         >
-          {status === "processing" ? "Elaborazione..." : status === "success" ? "Pagamento completato!" : "Paga 0.01 Pi"}
+          {status === "processing"
+            ? "Elaborazione..."
+            : status === "success"
+              ? "Grazie per la donazione!"
+              : amount
+                ? `Dona ${amount} Pi`
+                : "Scegli un importo"}
         </button>
 
         {errorMsg && <p className="mt-3 text-center text-sm text-destructive">{errorMsg}</p>}
-        {status === "success" && <p className="mt-3 text-center text-sm text-green-600">Pagamento completato con successo!</p>}
+        {status === "success" && (
+          <div className="mt-4 text-center">
+            <p className="text-sm font-bold text-green-600">Donazione completata con successo!</p>
+            <button
+              onClick={() => { setStatus("idle"); setAmount("") }}
+              className="mt-2 text-sm text-[#F7A800] underline"
+            >
+              Fai un&apos;altra donazione
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
