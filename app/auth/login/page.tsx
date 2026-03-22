@@ -1,22 +1,46 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
+
+type PiSDK = {
+  init: (config: { version: string; sandbox: boolean }) => void
+  authenticate: (scopes: string[], onIncomplete: () => void) => Promise<{ accessToken: string; user: { uid: string } }>
+}
 
 function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState("")
   const [error, setError] = useState("")
+  const [sdkReady, setSdkReady] = useState(false)
+  const piRef = useRef<PiSDK | null>(null)
 
   useEffect(() => {
     const session = localStorage.getItem("pi_session")
     if (session) window.location.href = "/chat"
+
+    // Initialize Pi SDK on mount
+    function initPiSDK() {
+      const Pi = (window as unknown as Record<string, unknown>).Pi as PiSDK | undefined
+      if (Pi) {
+        try {
+          Pi.init({ version: "2.0", sandbox: false })
+          piRef.current = Pi
+          setSdkReady(true)
+        } catch {
+          // SDK might already be initialized, that's ok
+          piRef.current = Pi
+          setSdkReady(true)
+        }
+      } else {
+        // SDK not loaded yet, retry in 500ms
+        setTimeout(initPiSDK, 500)
+      }
+    }
+    initPiSDK()
   }, [])
 
   async function handlePiLogin() {
-    const Pi = (window as unknown as Record<string, unknown>).Pi as {
-      init: (config: { version: string; sandbox: boolean }) => void
-      authenticate: (scopes: string[], onIncomplete: () => void) => Promise<{ accessToken: string; user: { uid: string } }>
-    } | undefined
+    const Pi = piRef.current
 
     if (!Pi) {
       setError("Pi SDK non disponibile. Apri nel Pi Browser.")
@@ -28,7 +52,6 @@ function LoginForm() {
     setStatus("Connessione a Pi Network...")
 
     try {
-      Pi.init({ version: "2.0", sandbox: false })
       const auth = await Pi.authenticate(["username", "payments"], () => {})
       setStatus("Verifica credenziali...")
 
