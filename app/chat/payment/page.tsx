@@ -1,6 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
+
+type PiSDK = {
+  init: (config: { version: string; sandbox: boolean }) => void
+  authenticate: (scopes: string[], onIncomplete: () => void) => Promise<{ user?: { uid?: string; username?: string } }>
+  createPayment: (data: Record<string, unknown>, callbacks: Record<string, unknown>) => void
+}
 
 const QUICK_AMOUNTS = [0.1, 0.5, 1, 5, 10]
 
@@ -8,6 +14,30 @@ export default function PaymentPage() {
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle")
   const [errorMsg, setErrorMsg] = useState("")
   const [amount, setAmount] = useState("")
+  const [sdkReady, setSdkReady] = useState(false)
+  const piRef = useRef<PiSDK | null>(null)
+
+  useEffect(() => {
+    // Initialize Pi SDK on mount
+    function initPiSDK() {
+      const Pi = (window as unknown as Record<string, unknown>).Pi as PiSDK | undefined
+      if (Pi) {
+        try {
+          Pi.init({ version: "2.0", sandbox: false })
+          piRef.current = Pi
+          setSdkReady(true)
+        } catch {
+          // SDK might already be initialized, that's ok
+          piRef.current = Pi
+          setSdkReady(true)
+        }
+      } else {
+        // SDK not loaded yet, retry in 500ms
+        setTimeout(initPiSDK, 500)
+      }
+    }
+    initPiSDK()
+  }, [])
 
   function selectQuickAmount(value: number) {
     setAmount(value.toString())
@@ -21,11 +51,7 @@ export default function PaymentPage() {
       return
     }
 
-    const Pi = (window as unknown as Record<string, unknown>).Pi as {
-      init: (config: { version: string; sandbox: boolean }) => void
-      authenticate: (scopes: string[], onIncomplete: () => void) => Promise<unknown>
-      createPayment: (data: Record<string, unknown>, callbacks: Record<string, unknown>) => void
-    } | undefined
+    const Pi = piRef.current
 
     if (!Pi) {
       setErrorMsg("Pi SDK non disponibile. Apri nel Pi Browser.")
@@ -37,8 +63,7 @@ export default function PaymentPage() {
     setErrorMsg("")
 
     try {
-      Pi.init({ version: "2.0", sandbox: false })
-      const authResult = await Pi.authenticate(["payments", "username"], () => {}) as { user?: { uid?: string; username?: string } }
+      const authResult = await Pi.authenticate(["payments", "username"], () => {})
       const piUid = authResult?.user?.uid || "unknown"
       const username = authResult?.user?.username || "Anonimo"
       const memo = `Donazione ${parsedAmount} Pi - Chat Pionieri`
