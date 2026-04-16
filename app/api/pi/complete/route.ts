@@ -6,11 +6,9 @@ export async function POST(req: Request) {
     const { paymentId, txid } = await req.json()
     
     if (!process.env.PI_API_KEY) {
-      console.error("[v0] PI_API_KEY non configurata")
       return NextResponse.json({ error: "API key non configurata" }, { status: 500 })
     }
-    
-    console.log("[v0] Completing payment:", paymentId, "txid:", txid)
+
     const res = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/complete`, {
       method: "POST",
       headers: {
@@ -21,8 +19,6 @@ export async function POST(req: Request) {
     })
     
     const data = await res.text()
-    console.log("[v0] Complete response:", res.status, data)
-    
     if (!res.ok) {
       return NextResponse.json({ error: `Errore completamento: ${data}` }, { status: res.status })
     }
@@ -39,13 +35,12 @@ export async function POST(req: Request) {
         })
         .eq("pi_payment_id", paymentId)
         .eq("app_source", APP_SOURCE)
-    } catch (dbErr) {
-      console.error("[v0] DB update error:", dbErr)
+    } catch {
+      // DB error non blocca la risposta
     }
 
     return NextResponse.json({ success: true })
-  } catch (err) {
-    console.error("[v0] Complete error:", err)
+  } catch {
     return NextResponse.json({ error: "Errore del server" }, { status: 500 })
   }
 }

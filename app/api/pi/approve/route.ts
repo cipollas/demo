@@ -6,11 +6,9 @@ export async function POST(req: Request) {
     const { paymentId, piUid, username, amount, memo } = await req.json()
     
     if (!process.env.PI_API_KEY) {
-      console.error("[v0] PI_API_KEY non configurata")
       return NextResponse.json({ error: "API key non configurata" }, { status: 500 })
     }
-    
-    console.log("[v0] Approving payment:", paymentId)
+
     const res = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/approve`, {
       method: "POST",
       headers: { 
@@ -20,8 +18,6 @@ export async function POST(req: Request) {
     })
     
     const data = await res.text()
-    console.log("[v0] Approve response:", res.status, data)
-    
     if (!res.ok) {
       return NextResponse.json({ error: `Errore approvazione: ${data}` }, { status: res.status })
     }
@@ -38,13 +34,12 @@ export async function POST(req: Request) {
         status: "approved",
         app_source: APP_SOURCE,
       })
-    } catch (dbErr) {
-      console.error("[v0] DB insert error:", dbErr)
+    } catch {
+      // DB error non blocca la risposta
     }
 
     return NextResponse.json({ success: true })
-  } catch (err) {
-    console.error("[v0] Approve error:", err)
+  } catch {
     return NextResponse.json({ error: "Errore del server" }, { status: 500 })
   }
 }
