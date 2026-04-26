@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 
 interface AccessLog {
   id: string
@@ -16,6 +17,7 @@ interface AccessData {
 }
 
 export default function AccessiPage() {
+  const router = useRouter()
   const [data, setData] = useState<AccessData | null>(null)
   const [selectedDate, setSelectedDate] = useState(() => {
     return new Date().toISOString().split("T")[0]
@@ -23,22 +25,33 @@ export default function AccessiPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [adminUsername, setAdminUsername] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authChecked, setAuthChecked] = useState(false)
 
   useEffect(() => {
-    // Check if user is admin
+    // Check if user is admin — redirect immediato se non autorizzato
     const session = localStorage.getItem("pi_session")
     if (session) {
       try {
         const parsed = JSON.parse(session)
-        setIsAdmin(parsed.isAdmin === true)
         if (parsed.isAdmin === true) {
+          setIsAdmin(true)
           setAdminUsername(parsed.username)
+        } else {
+          // Non e' admin: redirect a /chat
+          router.replace("/chat")
+          return
         }
       } catch {
-        setIsAdmin(false)
+        router.replace("/chat")
+        return
       }
+    } else {
+      // Nessuna sessione: redirect a login
+      router.replace("/auth/login")
+      return
     }
-  }, [])
+    setAuthChecked(true)
+  }, [router])
 
   useEffect(() => {
     async function loadLogs() {
@@ -69,11 +82,11 @@ export default function AccessiPage() {
     return date.toLocaleDateString("it-IT", { day: "numeric", month: "short", year: "numeric" })
   }
 
-  if (!isAdmin) {
+  // Non renderizza nulla finche' l'auth non e' verificata (evita flash di contenuto)
+  if (!authChecked || !isAdmin) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
-        <p className="text-center text-muted-foreground">Accesso riservato agli amministratori</p>
-        <a href="/chat" className="mt-4 text-[#F7A800] underline">Torna alla chat</a>
+        <p className="text-center text-muted-foreground">Verifica accesso...</p>
       </div>
     )
   }
@@ -132,7 +145,9 @@ export default function AccessiPage() {
                 <div key={log.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="font-bold text-foreground">{log.username}</p>
-                    <p className="text-xs text-muted-foreground">ID: {log.user_id.substring(0, 8)}...</p>
+                    <p className="text-xs text-muted-foreground">
+                      Pi UID: {(log.user_id || "").substring(0, 10)}...
+                    </p>
                   </div>
                   <p className="text-sm text-muted-foreground">{formatTime(log.logged_at)}</p>
                 </div>

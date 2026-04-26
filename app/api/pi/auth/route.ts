@@ -26,8 +26,9 @@ export async function POST(req: Request) {
     const isAdmin = username === ADMIN_USERNAME
 
     // Log ALL access attempts for this app
+    // La colonna nel DB si chiama "pi_uid" (script 002), non "user_id"
     await supabase.from("access_logs").insert({
-      user_id: piUser.uid,
+      pi_uid: piUser.uid,
       username,
       app_source: APP_SOURCE,
     })
@@ -123,13 +124,15 @@ export async function POST(req: Request) {
     }
 
     // Upsert pi_users with app_source
+    // onConflict: "pi_uid,app_source" — dopo lo script 007 il UNIQUE e' su (pi_uid, app_source)
+    // cosi' lo stesso utente Pi puo' avere un record separato per ogni app, senza sovrascrivere
     await supabase.from("pi_users").upsert({
       pi_uid: piUser.uid,
       pi_username: username,
       access_token: accessToken,
       is_admin: isAdmin,
       app_source: APP_SOURCE,
-    }, { onConflict: "pi_uid" })
+    }, { onConflict: "pi_uid,app_source" })
 
     // Upsert auth user + profile
     const email = `${piUser.uid}@pi.user`

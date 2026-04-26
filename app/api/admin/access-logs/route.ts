@@ -21,29 +21,32 @@ export async function GET(req: Request) {
     endOfDay.setHours(23, 59, 59, 999)
 
     // Only get access logs for this specific app
-    // Nota: la colonna reale nel DB e' "created_at" (script 002).
-    // Se lo script 006 ha gia' aggiunto "logged_at", questa query funziona ugualmente
-    // perche' tentiamo prima con created_at (colonna garantita) e poi esponiamo come logged_at.
+    // Colonne reali nel DB (script 002 + 006):
+    //   pi_uid      — identificativo Pi dell'utente (NON "user_id")
+    //   username    — username Pi
+    //   created_at  — timestamp inserimento
+    //   logged_at   — alias di created_at aggiunto dallo script 006
+    //   app_source  — separazione multi-app
     const { data, error } = await supabase
       .from("access_logs")
-      .select("id, user_id, username, created_at, app_source")
+      .select("id, pi_uid, username, logged_at, app_source")
       .eq("app_source", APP_SOURCE)
-      .gte("created_at", startOfDay.toISOString())
-      .lte("created_at", endOfDay.toISOString())
-      .order("created_at", { ascending: false })
+      .gte("logged_at", startOfDay.toISOString())
+      .lte("logged_at", endOfDay.toISOString())
+      .order("logged_at", { ascending: false })
 
     if (error) {
       return NextResponse.json({ error: "Errore database: " + error.message }, { status: 500 })
     }
 
-    // Normalizza i log esponendo "logged_at" per compatibilita' con il frontend
+    // Espone "user_id" come alias di "pi_uid" per compatibilita' con i componenti frontend
     const logs = (data || []).map((log) => ({
       ...log,
-      logged_at: log.created_at,
+      user_id: log.pi_uid,
     }))
 
-    // Count unique users
-    const uniqueUsers = new Set(logs.map((log) => log.user_id) || [])
+    // Count unique users (basato su pi_uid)
+    const uniqueUsers = new Set((data || []).map((log) => log.pi_uid))
 
     return NextResponse.json({
       logs,
