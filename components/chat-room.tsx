@@ -54,13 +54,27 @@ export function ChatRoom({ currentUserId, currentUsername, isAdmin }: ChatRoomPr
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
+    // Filtra il realtime per app_source=app_pionieri cosi' eventi di altre app
+    // non triggerano fetch inutili su questa app
+    const APP_SOURCE = process.env.NEXT_PUBLIC_APP_SOURCE || "app_pionieri"
+
     const channel = supabase
       .channel("messages-realtime", { config: { presence: { key: currentUserId } } })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, async () => {
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `app_source=eq.${APP_SOURCE}`,
+      }, async () => {
         const res = await fetch("/api/messages")
         if (res.ok) setMessages(await res.json())
       })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, async () => {
+      .on("postgres_changes", {
+        event: "DELETE",
+        schema: "public",
+        table: "messages",
+        filter: `app_source=eq.${APP_SOURCE}`,
+      }, async () => {
         const res = await fetch("/api/messages")
         if (res.ok) setMessages(await res.json())
       })
