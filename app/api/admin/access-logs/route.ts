@@ -21,24 +21,33 @@ export async function GET(req: Request) {
     endOfDay.setHours(23, 59, 59, 999)
 
     // Only get access logs for this specific app
+    // Nota: la colonna reale nel DB e' "created_at" (script 002).
+    // Se lo script 006 ha gia' aggiunto "logged_at", questa query funziona ugualmente
+    // perche' tentiamo prima con created_at (colonna garantita) e poi esponiamo come logged_at.
     const { data, error } = await supabase
       .from("access_logs")
-      .select("id, user_id, username, logged_at, app_source")
+      .select("id, user_id, username, created_at, app_source")
       .eq("app_source", APP_SOURCE)
-      .gte("logged_at", startOfDay.toISOString())
-      .lte("logged_at", endOfDay.toISOString())
-      .order("logged_at", { ascending: false })
+      .gte("created_at", startOfDay.toISOString())
+      .lte("created_at", endOfDay.toISOString())
+      .order("created_at", { ascending: false })
 
     if (error) {
       return NextResponse.json({ error: "Errore database: " + error.message }, { status: 500 })
     }
 
+    // Normalizza i log esponendo "logged_at" per compatibilita' con il frontend
+    const logs = (data || []).map((log) => ({
+      ...log,
+      logged_at: log.created_at,
+    }))
+
     // Count unique users
-    const uniqueUsers = new Set(data?.map(log => log.user_id) || [])
+    const uniqueUsers = new Set(logs.map((log) => log.user_id) || [])
 
     return NextResponse.json({
-      logs: data || [],
-      totalAccesses: data?.length || 0,
+      logs,
+      totalAccesses: logs.length,
       uniqueUsers: uniqueUsers.size,
       date: targetDate.toISOString().split("T")[0],
       app: APP_SOURCE,

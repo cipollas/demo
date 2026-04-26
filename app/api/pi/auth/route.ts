@@ -34,37 +34,78 @@ export async function POST(req: Request) {
 
     // Admin bypasses all checks
     if (!isAdmin) {
-      // Check KYC status from multiple possible locations
-      const credentials = piData.credentials || piUser.credentials || {}
-      
-      // KYC can be in different formats depending on Pi SDK version
-      const kycStatus = credentials.kyc_verification_status || 
-                        credentials.kyc_status ||
-                        piUser.kyc_verification_status
-      
-      const kycVerified = kycStatus === "approved" || 
-                          kycStatus === "provisional" ||
-                          kycStatus === "APPROVED" ||
-                          kycStatus === "PROVISIONAL" ||
-                          piUser.kyc_verified === true ||
-                          credentials.kyc_verified === true
-      
-      // Check migration status
-      const hasMigrated = credentials.has_migrated === true || 
-                          piUser.has_migrated === true ||
-                          credentials.migration_status === "completed"
+      // -------------------------------------------------------------------
+      // KYC & MIGRATION CHECK — logica strict
+      //
+      // Fonte primaria: piData (risposta verificata da /v2/me tramite Pi API Key)
+      // Fonte secondaria: piUser.credentials (dati lato client — NON affidabili da soli)
+      //
+      // Regole di accesso:
+      //   ACCESSO CONSENTITO se:
+      //     (A) kycStatus === "approved" / "APPROVED"            (KYC pieno)
+      //     (B) kycStatus === "provisional" / "PROVISIONAL"
+      //         AND hasMigrated === true                         (KYC provvisorio + migrazione)
+      //
+      //   ACCESSO NEGATO in tutti gli altri casi, incluso quando
+      //   Pi SDK non ritorna kycStatus (comportamento strict per sicurezza)
+      // -------------------------------------------------------------------
 
-      // Only block if we have explicit negative data
-      if (kycStatus && !kycVerified) {
-        return NextResponse.json({ 
-          error: "KYC non verificato. Devi avere il KYC approvato o provvisorio per accedere." 
+      const credentials = piData.credentials || piUser.credentials || {}
+
+      // Raccoglie kycStatus da tutte le posizioni note (Pi SDK v1/v2/v2.0)
+      const rawKycStatus: string | undefined =
+        piData.kyc_verification_status ||
+        credentials.kyc_verification_status ||
+        credentials.kyc_status ||
+        piUser.kyc_verification_status ||
+        undefined
+
+      const normalizedKyc = rawKycStatus?.toLowerCase()
+
+      const kycApproved =
+        normalizedKyc === "approved" ||
+        piData.kyc_verified === true ||
+        credentials.kyc_verified === true
+
+      const kycProvisional = normalizedKyc === "provisional"
+
+      // Raccoglie migrazione da tutte le posizioni note
+      const hasMigrated: boolean =
+        piData.has_migrated === true ||
+        credentials.has_migrated === true ||
+        piUser.has_migrated === true ||
+        credentials.migration_status === "completed" ||
+        piData.migration_status === "completed"
+
+      // Caso A: KYC approvato completamente — accesso consentito
+      if (kycApproved) {
+        // pass — continua il flusso
+      }
+      // Caso B: KYC provvisorio + migrazione completata — accesso consentito
+      else if (kycProvisional && hasMigrated) {
+        // pass — continua il flusso
+      }
+      // Caso C: KYC provvisorio ma migrazione NON completata — blocco
+      else if (kycProvisional && !hasMigrated) {
+        return NextResponse.json({
+          error: "Hai il KYC provvisorio ma non hai ancora completato la prima migrazione. Completa la migrazione su Pi Browser per accedere.",
+          code: "MIGRATION_REQUIRED",
+          kycStatus: rawKycStatus,
         }, { status: 403 })
       }
-      
-      // Only check migration if KYC status was provided
-      if (kycStatus && credentials.has_migrated === false) {
-        return NextResponse.json({ 
-          error: "Migrazione non completata. Devi completare la prima migrazione per accedere." 
+      // Caso D: KYC esplicitamente negativo (pending, rejected, ecc.)
+      else if (rawKycStatus !== undefined) {
+        return NextResponse.json({
+          error: "KYC non verificato. Devi avere il KYC approvato (o provvisorio con migrazione completata) per accedere.",
+          code: "KYC_NOT_VERIFIED",
+          kycStatus: rawKycStatus,
+        }, { status: 403 })
+      }
+      // Caso E: Pi SDK non ha restituito alcun dato KYC — blocco strict
+      else {
+        return NextResponse.json({
+          error: "Impossibile verificare il tuo KYC. Assicurati di usare Pi Browser aggiornato e riprova.",
+          code: "KYC_UNAVAILABLE",
         }, { status: 403 })
       }
     }
