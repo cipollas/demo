@@ -81,14 +81,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Utente bannato dalla chat" }, { status: 403 })
     }
 
-    // Upsert pi_users with app_source
-    await supabase.from("pi_users").upsert({
-      pi_uid: piUser.uid,
-      pi_username: username,
-      access_token: accessToken,
-      is_admin: isAdmin,
-      app_source: APP_SOURCE,
-    }, { onConflict: "pi_uid" })
+    // Upsert pi_users per questa app - controlla prima se esiste per non sovrascrivere altre app
+    const { data: existingPiUser } = await supabase
+      .from("pi_users")
+      .select("id")
+      .eq("pi_uid", piUser.uid)
+      .eq("app_source", APP_SOURCE)
+      .maybeSingle()
+
+    if (existingPiUser) {
+      await supabase.from("pi_users").update({
+        pi_username: username,
+        access_token: accessToken,
+        is_admin: isAdmin,
+      })
+      .eq("pi_uid", piUser.uid)
+      .eq("app_source", APP_SOURCE)
+    } else {
+      await supabase.from("pi_users").insert({
+        pi_uid: piUser.uid,
+        pi_username: username,
+        access_token: accessToken,
+        is_admin: isAdmin,
+        app_source: APP_SOURCE,
+      })
+    }
 
     // Upsert auth user + profile
     const email = `${piUser.uid}@pi.user`
@@ -110,12 +127,27 @@ export async function POST(req: Request) {
       userId = newUser.user.id
     }
 
-    // Upsert profile with app_source
-    await supabase.from("profiles").upsert({
-      id: userId,
-      display_name: username,
-      app_source: APP_SOURCE,
-    }, { onConflict: "id" })
+    // Upsert profile per questa app - controlla prima se esiste per non sovrascrivere altre app
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .eq("app_source", APP_SOURCE)
+      .maybeSingle()
+
+    if (existingProfile) {
+      await supabase.from("profiles").update({
+        display_name: username,
+      })
+      .eq("id", userId)
+      .eq("app_source", APP_SOURCE)
+    } else {
+      await supabase.from("profiles").insert({
+        id: userId,
+        display_name: username,
+        app_source: APP_SOURCE,
+      })
+    }
 
     return NextResponse.json({
       userId,

@@ -62,13 +62,19 @@ export async function POST(req: Request) {
     }
     const supabase = getAdmin()
 
+    // Get display_name for this user in this app
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", userId)
+      .eq("app_source", APP_SOURCE)
+      .single()
+
     // Check if banned for this app
     const { data: piUser } = await supabase
       .from("pi_users")
       .select("pi_uid")
-      .eq("pi_username",
-        (await supabase.from("profiles").select("display_name").eq("id", userId).single()).data?.display_name
-      )
+      .eq("pi_username", profileData?.display_name ?? "")
       .eq("app_source", APP_SOURCE)
       .maybeSingle()
 
