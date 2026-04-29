@@ -37,6 +37,7 @@ export default function AdminPage() {
   const [logsData, setLogsData] = useState<LogsData | null>(null)
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([])
   const [loading, setLoading] = useState(true)
+  // Default: nessun filtro data → mostra tutti gli accessi recenti
   const [selectedDate, setSelectedDate] = useState<string>("")
   const [username, setUsername] = useState("")
   const [isAdmin, setIsAdmin] = useState(false)
@@ -180,11 +181,12 @@ export default function AdminPage() {
             <div className="mb-4 flex items-end gap-2">
               <div className="flex-1">
                 <label className="mb-1 block text-sm font-medium text-foreground">
-                  Filtra per data:
+                  {selectedDate ? `Filtra per data:` : "Mostra tutti o filtra per data:"}
                 </label>
                 <input
                   type="date"
                   value={selectedDate}
+                  max={new Date().toISOString().split("T")[0]}
                   onChange={(e) => setSelectedDate(e.target.value)}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
                 />
@@ -219,10 +221,12 @@ export default function AdminPage() {
             <div className="rounded-xl border border-border bg-card">
               <div className="border-b border-border px-4 py-3">
                 <h2 className="font-bold text-foreground">
-                  {selectedDate ? `Accessi del ${selectedDate}` : "Tutti gli accessi recenti"}
+                  {selectedDate
+                    ? `Accessi del ${new Date(selectedDate + "T12:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}`
+                    : `Ultimi accessi (${logsData?.totalAccesses ?? 0} totali)`}
                 </h2>
                 <p className="text-xs text-muted-foreground">
-                  Solo accessi tramite {APP_SOURCE}
+                  Solo accessi app_source = {APP_SOURCE}
                 </p>
               </div>
               <div className="max-h-[50vh] overflow-y-auto">

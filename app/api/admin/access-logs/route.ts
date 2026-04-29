@@ -20,14 +20,14 @@ export async function GET(req: Request) {
       .order("logged_at", { ascending: false })
 
     if (date) {
-      // Fix timezone: usa date string diretta per evitare conversioni UTC errate
-      // Es: date="2026-04-28" → filtra tra "2026-04-28T00:00:00" e "2026-04-28T23:59:59"
+      // Filtra per data locale: allarga il range di ±1 giorno per coprire timezone UTC+1/+2
+      // es: date="2026-04-24" → filtra da "2026-04-23T22:00:00Z" a "2026-04-24T23:59:59Z"
       query = query
-        .gte("logged_at", `${date}T00:00:00.000Z`)
-        .lte("logged_at", `${date}T23:59:59.999Z`)
+        .gte("logged_at", `${date}T00:00:00+02:00`)
+        .lte("logged_at", `${date}T23:59:59+02:00`)
     } else {
-      // Senza data: mostra gli ultimi 100 accessi di tutti i giorni
-      query = query.limit(100)
+      // Senza data: mostra tutti gli ultimi 200 accessi
+      query = query.limit(200)
     }
 
     const { data, error } = await query
