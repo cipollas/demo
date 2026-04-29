@@ -13,21 +13,24 @@ export async function GET(req: Request) {
 
     const supabase = getAdmin()
 
-    // Get start and end of the requested day (or today)
-    const targetDate = date ? new Date(date) : new Date()
-    const startOfDay = new Date(targetDate)
-    startOfDay.setHours(0, 0, 0, 0)
-    const endOfDay = new Date(targetDate)
-    endOfDay.setHours(23, 59, 59, 999)
-
-    // Only get access logs for this specific app
-    const { data, error } = await supabase
+    let query = supabase
       .from("access_logs")
       .select("id, user_id, username, logged_at, app_source")
       .eq("app_source", APP_SOURCE)
-      .gte("logged_at", startOfDay.toISOString())
-      .lte("logged_at", endOfDay.toISOString())
       .order("logged_at", { ascending: false })
+
+    if (date) {
+      // Fix timezone: usa date string diretta per evitare conversioni UTC errate
+      // Es: date="2026-04-28" → filtra tra "2026-04-28T00:00:00" e "2026-04-28T23:59:59"
+      query = query
+        .gte("logged_at", `${date}T00:00:00.000Z`)
+        .lte("logged_at", `${date}T23:59:59.999Z`)
+    } else {
+      // Senza data: mostra gli ultimi 100 accessi di tutti i giorni
+      query = query.limit(100)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       return NextResponse.json({ error: "Errore database: " + error.message }, { status: 500 })
@@ -40,7 +43,7 @@ export async function GET(req: Request) {
       logs: data || [],
       totalAccesses: data?.length || 0,
       uniqueUsers: uniqueUsers.size,
-      date: targetDate.toISOString().split("T")[0],
+      date: date || null,
       app: APP_SOURCE,
     })
   } catch {

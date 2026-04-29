@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 
-// Importiamo le costanti centrali per evitare disallineamenti con le altre app
+// Costanti centrali - identificano questa app nel database condiviso
 const ADMIN_USERNAME = process.env.NEXT_PUBLIC_ADMIN_USERNAME || "cipollas"
 const APP_SOURCE = process.env.NEXT_PUBLIC_APP_SOURCE || "app_pionieri"
 
@@ -18,7 +18,7 @@ interface LogsData {
   logs: AccessLog[]
   totalAccesses: number
   uniqueUsers: number
-  date: string
+  date: string | null
   app: string
 }
 
@@ -37,7 +37,7 @@ export default function AdminPage() {
   const [logsData, setLogsData] = useState<LogsData | null>(null)
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0])
+  const [selectedDate, setSelectedDate] = useState<string>("")
   const [username, setUsername] = useState("")
   const [isAdmin, setIsAdmin] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>("accessi")
@@ -70,7 +70,8 @@ export default function AdminPage() {
 
   async function loadLogs() {
     setLoading(true)
-    const res = await fetch(`/api/admin/access-logs?adminUsername=${username}&date=${selectedDate}`)
+    const dateParam = selectedDate ? `&date=${selectedDate}` : ""
+    const res = await fetch(`/api/admin/access-logs?adminUsername=${username}${dateParam}`)
     if (res.ok) {
       const data = await res.json()
       setLogsData(data)
@@ -101,10 +102,21 @@ export default function AdminPage() {
     setUnbanning(null)
   }
 
+  function formatDateTime(isoString: string) {
+    const d = new Date(isoString)
+    return d.toLocaleString("it-IT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
   if (!isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-muted-foreground">Verifica accesso...</p>
+        <p className="text-muted-foreground">Verifica accesso admin...</p>
       </div>
     )
   }
@@ -119,14 +131,25 @@ export default function AdminPage() {
         </div>
         <button
           onClick={() => router.push("/chat")}
-          className="rounded-lg border border-border px-3 py-2 text-xs text-foreground"
+          className="min-h-[44px] rounded-lg border border-border px-3 py-2 text-xs text-foreground"
         >
           Indietro
         </button>
       </header>
 
+      {/* Info box - requisiti accesso */}
+      <div className="mx-4 mt-4 rounded-xl border border-[#F7A800]/30 bg-[#F7A800]/5 p-3">
+        <p className="text-xs font-semibold text-[#F7A800]">Requisiti accesso app</p>
+        <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+          <li>- KYC approvato (OK) o provvisorio (PROVISIONAL)</li>
+          <li>- Prima migrazione al Mainnet completata</li>
+          <li>- Accesso tramite Pi Browser</li>
+          <li>- Admin: solo utente &quot;{ADMIN_USERNAME}&quot;</li>
+        </ul>
+      </div>
+
       {/* Tabs */}
-      <div className="flex border-b border-border bg-card">
+      <div className="mt-4 flex border-b border-border bg-card">
         <button
           onClick={() => setActiveTab("accessi")}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
@@ -145,7 +168,7 @@ export default function AdminPage() {
               : "text-muted-foreground"
           }`}
         >
-          Bannati
+          Bannati ({bannedUsers.length})
         </button>
       </div>
 
@@ -153,21 +176,37 @@ export default function AdminPage() {
         {/* TAB ACCESSI */}
         {activeTab === "accessi" && (
           <>
-            <div className="mb-4">
-              <label className="mb-2 block text-sm font-medium text-foreground">Seleziona data:</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
-              />
+            {/* Filtro data */}
+            <div className="mb-4 flex items-end gap-2">
+              <div className="flex-1">
+                <label className="mb-1 block text-sm font-medium text-foreground">
+                  Filtra per data:
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
+                />
+              </div>
+              {selectedDate && (
+                <button
+                  onClick={() => setSelectedDate("")}
+                  className="min-h-[44px] rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground"
+                >
+                  Tutti
+                </button>
+              )}
             </div>
 
+            {/* Stats */}
             {logsData && (
               <div className="mb-4 grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-border bg-card p-4">
                   <p className="text-2xl font-bold text-[#F7A800]">{logsData.totalAccesses}</p>
-                  <p className="text-xs text-muted-foreground">Accessi totali</p>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedDate ? "Accessi nel giorno" : "Accessi recenti"}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-border bg-card p-4">
                   <p className="text-2xl font-bold text-[#F7A800]">{logsData.uniqueUsers}</p>
@@ -176,28 +215,43 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* Lista accessi */}
             <div className="rounded-xl border border-border bg-card">
               <div className="border-b border-border px-4 py-3">
-                <h2 className="font-bold text-foreground">Accessi del {selectedDate}</h2>
+                <h2 className="font-bold text-foreground">
+                  {selectedDate ? `Accessi del ${selectedDate}` : "Tutti gli accessi recenti"}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Solo accessi tramite {APP_SOURCE}
+                </p>
               </div>
-              <div className="max-h-[55vh] overflow-y-auto">
+              <div className="max-h-[50vh] overflow-y-auto">
                 {loading ? (
                   <div className="p-4 text-center text-muted-foreground">Caricamento...</div>
-                ) : logsData?.logs.length === 0 ? (
-                  <div className="p-4 text-center text-muted-foreground">Nessun accesso in questa data</div>
+                ) : !logsData?.logs.length ? (
+                  <div className="p-6 text-center">
+                    <p className="text-muted-foreground">Nessun accesso trovato</p>
+                    {selectedDate && (
+                      <button
+                        onClick={() => setSelectedDate("")}
+                        className="mt-2 text-xs text-[#F7A800] underline"
+                      >
+                        Mostra tutti gli accessi
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <ul className="divide-y divide-border">
-                    {logsData?.logs.map((log) => (
+                    {logsData.logs.map((log) => (
                       <li key={log.id} className="flex items-center justify-between px-4 py-3">
                         <div>
                           <p className="font-medium text-foreground">{log.username}</p>
-                          <p className="text-xs text-muted-foreground">ID: {log.user_id.slice(0, 8)}...</p>
+                          <p className="text-xs text-muted-foreground">
+                            ID: {log.user_id.slice(0, 8)}...
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(log.logged_at).toLocaleTimeString("it-IT", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                        <p className="text-right text-xs text-muted-foreground">
+                          {formatDateTime(log.logged_at)}
                         </p>
                       </li>
                     ))}
@@ -226,8 +280,15 @@ export default function AdminPage() {
                     <li key={user.id} className="flex items-start justify-between px-4 py-3">
                       <div className="flex-1">
                         <p className="font-medium text-foreground">{user.username}</p>
-                        <p className="text-xs text-muted-foreground">PI: {user.pi_uid.slice(0, 12)}...</p>
+                        <p className="text-xs text-muted-foreground">
+                          PI UID: {user.pi_uid.slice(0, 12)}...
+                        </p>
                         <p className="text-xs text-red-500">{user.reason}</p>
+                        {user.banned_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Bannato: {formatDateTime(user.banned_at)}
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => handleUnban(user.pi_uid)}
