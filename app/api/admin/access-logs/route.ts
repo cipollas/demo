@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getAdmin, APP_SOURCE, ADMIN_USERNAME } from "@/lib/supabase/admin"
 
+// Colonne tabella access_logs: id, user_id, username, logged_at, app_source (NO pi_uid)
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
