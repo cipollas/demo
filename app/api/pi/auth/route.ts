@@ -26,8 +26,9 @@ export async function POST(req: Request) {
     const isAdmin = username === ADMIN_USERNAME
 
     // Log ALL access attempts for this app
+    // Nota: user_id in access_logs e uuid - viene aggiornato dopo la creazione dell'utente Supabase
+    // Per ora loggiamo solo username e app_source, user_id viene aggiunto dopo
     await supabase.from("access_logs").insert({
-      user_id: piUser.uid,
       username,
       app_source: APP_SOURCE,
     })
@@ -148,6 +149,14 @@ export async function POST(req: Request) {
         app_source: APP_SOURCE,
       })
     }
+
+    // Aggiorna access_log con lo userId Supabase corretto (uuid)
+    await supabase
+      .from("access_logs")
+      .update({ user_id: userId })
+      .eq("username", username)
+      .eq("app_source", APP_SOURCE)
+      .is("user_id", null)
 
     return NextResponse.json({
       userId,
