@@ -37,6 +37,7 @@ export default function AdminPage() {
   const [logsData, setLogsData] = useState<LogsData | null>(null)
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0])
   const [username, setUsername] = useState("")
   const [isAdmin, setIsAdmin] = useState(false)
@@ -70,10 +71,17 @@ export default function AdminPage() {
 
   async function loadLogs() {
     setLoading(true)
-    const res = await fetch(`/api/admin/access-logs?adminUsername=${username}&date=${selectedDate}`)
-    if (res.ok) {
+    setLoadError(null)
+    try {
+      const res = await fetch(`/api/admin/access-logs?adminUsername=${username}&date=${selectedDate}`)
       const data = await res.json()
-      setLogsData(data)
+      if (res.ok) {
+        setLogsData(data)
+      } else {
+        setLoadError(data.error || "Errore caricamento accessi")
+      }
+    } catch {
+      setLoadError("Errore di rete — riprova")
     }
     setLoading(false)
   }
@@ -183,6 +191,8 @@ export default function AdminPage() {
               <div className="max-h-[55vh] overflow-y-auto">
                 {loading ? (
                   <div className="p-4 text-center text-muted-foreground">Caricamento...</div>
+                ) : loadError ? (
+                  <div className="p-4 text-center text-red-500 text-sm">{loadError}</div>
                 ) : logsData?.logs.length === 0 ? (
                   <div className="p-4 text-center text-muted-foreground">Nessun accesso in questa data</div>
                 ) : (
