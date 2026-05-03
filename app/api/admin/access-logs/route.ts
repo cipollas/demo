@@ -48,21 +48,25 @@ export async function GET(req: Request) {
 
     for (const [uidCol, tsCol] of combos) {
       if (resolved) break
+
+      // Usiamo select("*") per evitare il ParserError di TypeScript con select dinamico.
+      // Filtriamo poi i campi necessari nel mapping.
       const { data: rows, error } = await supabase
         .from("access_logs")
-        .select(`id, ${uidCol}, username, ${tsCol}, app_source`)
+        .select("*")
         .eq("app_source", APP_SOURCE)
         .gte(tsCol, startOfDay)
         .lte(tsCol, endOfDay)
         .order(tsCol, { ascending: false })
 
-      if (!error && rows) {
-        logs = rows.map((r: Record<string, string>) => ({
-          id: r.id,
-          uid: r[uidCol] || "",
-          username: r.username || "",
-          timestamp: r[tsCol] || "",
-          app_source: r.app_source || APP_SOURCE,
+      // Verifica che la riga abbia effettivamente la colonna attesa (non undefined)
+      if (!error && rows && rows.length >= 0 && (rows.length === 0 || rows[0][uidCol] !== undefined)) {
+        logs = (rows as Record<string, unknown>[]).map((r) => ({
+          id: String(r.id ?? ""),
+          uid: String(r[uidCol] ?? ""),
+          username: String(r.username ?? ""),
+          timestamp: String(r[tsCol] ?? ""),
+          app_source: String(r.app_source ?? APP_SOURCE),
         }))
         resolved = true
       }
