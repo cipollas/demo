@@ -24,82 +24,74 @@ export async function GET(req: Request) {
     // Strategia di query doppia:
     // Prima tenta con "logged_at" (script 006), poi fallback su "created_at" (script 002).
     // In questo modo funziona sia prima che dopo l'esecuzione dello script 006.
-    let data: Array<{
+    // Il DB puo' avere la colonna chiamata "pi_uid" (script 002) oppure "user_id" (versione precedente).
+    // Proviamo tutte le combinazioni possibili di colonna ID e colonna timestamp
+    // finche' non troviamo quella che funziona nel DB reale.
+    type LogRow = {
       id: string
-      pi_uid: string
+      uid: string       // valore normalizzato (pi_uid o user_id che sia)
       username: string
-      logged_at: string | null
-      created_at?: string | null
+      timestamp: string // valore normalizzato (logged_at o created_at che sia)
       app_source: string
-    }> | null = null
-    let usedColumn = "logged_at"
+    }
 
-    const { data: d1, error: e1 } = await supabase
-      .from("access_logs")
-      .select("id, pi_uid, username, logged_at, app_source")
-      .eq("app_source", APP_SOURCE)
-      .gte("logged_at", startOfDay)
-      .lte("logged_at", endOfDay)
-      .order("logged_at", { ascending: false })
+    let logs: LogRow[] = []
+    let resolved = false
 
-    if (e1) {
-      // logged_at non esiste — fallback su created_at
-      usedColumn = "created_at"
-      const { data: d2, error: e2 } = await supabase
+    // Combinazioni da tentare in ordine: [colonna_uid, colonna_timestamp]
+    const combos = [
+      ["pi_uid", "logged_at"],
+      ["pi_uid", "created_at"],
+      ["user_id", "logged_at"],
+      ["user_id", "created_at"],
+    ]
+
+    for (const [uidCol, tsCol] of combos) {
+      if (resolved) break
+      const { data: rows, error } = await supabase
         .from("access_logs")
-        .select("id, pi_uid, username, created_at, app_source")
+        .select(`id, ${uidCol}, username, ${tsCol}, app_source`)
         .eq("app_source", APP_SOURCE)
-        .gte("created_at", startOfDay)
-        .lte("created_at", endOfDay)
-        .order("created_at", { ascending: false })
+        .gte(tsCol, startOfDay)
+        .lte(tsCol, endOfDay)
+        .order(tsCol, { ascending: false })
 
-      if (e2) {
-        return NextResponse.json({ error: "Errore database: " + e2.message }, { status: 500 })
-      }
-      data = (d2 || []).map((r) => ({ ...r, logged_at: r.created_at ?? null }))
-    } else {
-      // logged_at esiste ma alcuni record potrebbero avere logged_at NULL (inseriti prima dello script 006)
-      // In quel caso eseguiamo una query aggiuntiva senza filtro data per i NULL e li includiamo se la data corrisponde a created_at
-      data = d1 || []
-
-      // Se ci sono pochi risultati, proviamo anche a recuperare record con logged_at NULL usando created_at
-      const { data: nullData } = await supabase
-        .from("access_logs")
-        .select("id, pi_uid, username, created_at, app_source")
-        .eq("app_source", APP_SOURCE)
-        .is("logged_at", null)
-        .gte("created_at", startOfDay)
-        .lte("created_at", endOfDay)
-
-      if (nullData && nullData.length > 0) {
-        const normalized = nullData.map((r) => ({ ...r, logged_at: r.created_at ?? null }))
-        data = [...data, ...normalized].sort((a, b) =>
-          (b.logged_at || "") > (a.logged_at || "") ? 1 : -1
-        )
+      if (!error && rows) {
+        logs = rows.map((r: Record<string, string>) => ({
+          id: r.id,
+          uid: r[uidCol] || "",
+          username: r.username || "",
+          timestamp: r[tsCol] || "",
+          app_source: r.app_source || APP_SOURCE,
+        }))
+        resolved = true
       }
     }
 
-    // Espone "user_id" come alias di "pi_uid" per compatibilita' con i componenti frontend
-    const logs = data.map((log) => ({
-      ...log,
-      user_id: log.pi_uid,
-      logged_at: log.logged_at || log.created_at || null,
+    if (!resolved) {
+      return NextResponse.json({ error: "Struttura tabella access_logs non riconosciuta. Eseguire gli script di migrazione." }, { status: 500 })
+    }
+
+    // Normalizza per il frontend: espone sia user_id che pi_uid e logged_at
+    const normalizedLogs = logs.map((log) => ({
+      id: log.id,
+      pi_uid: log.uid,
+      user_id: log.uid,
+      username: log.username,
+      logged_at: log.timestamp,
+      app_source: log.app_source,
     }))
 
-    // Count unique users (basato su pi_uid)
-    const uniqueUsers = new Set(data.map((log) => log.pi_uid))
-
-    console.log("[v0] access-logs query:", { targetDateStr, usedColumn, count: logs.length })
+    const uniqueUsers = new Set(logs.map((log) => log.uid))
 
     return NextResponse.json({
-      logs,
-      totalAccesses: logs.length,
+      logs: normalizedLogs,
+      totalAccesses: normalizedLogs.length,
       uniqueUsers: uniqueUsers.size,
       date: targetDateStr,
       app: APP_SOURCE,
     })
-  } catch (err) {
-    console.log("[v0] access-logs error:", err)
+  } catch {
     return NextResponse.json({ error: "Errore del server" }, { status: 500 })
   }
 }

@@ -25,13 +25,21 @@ export async function POST(req: Request) {
     const username = piData.username || piUser.uid
     const isAdmin = username === ADMIN_USERNAME
 
-    // Log ALL access attempts for this app
-    // La colonna nel DB si chiama "pi_uid" (script 002), non "user_id"
-    await supabase.from("access_logs").insert({
+    // Log ALL access attempts per questa app.
+    // Il DB puo' avere la colonna "pi_uid" (script 002) o "user_id" (versione precedente).
+    // Proviamo prima con pi_uid, se fallisce usiamo user_id.
+    const { error: logErr1 } = await supabase.from("access_logs").insert({
       pi_uid: piUser.uid,
       username,
       app_source: APP_SOURCE,
     })
+    if (logErr1) {
+      await supabase.from("access_logs").insert({
+        user_id: piUser.uid,
+        username,
+        app_source: APP_SOURCE,
+      })
+    }
 
     // Admin bypasses all checks
     if (!isAdmin) {
